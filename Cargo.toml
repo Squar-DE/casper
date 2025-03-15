@@ -1,0 +1,11 @@
+[package]
+name = "casper"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gtk4 = { version = "0.6", features = ["v4_10"] }
+gio = "0.18"
+gdk-pixbuf = "0.18"
+gdk = "0.6"
+dirs = "6.0.0"
