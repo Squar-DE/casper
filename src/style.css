@@ -1,0 +1,8 @@
+.sidebar {
+    background-color: @sidebar_bg_color;
+    border-right: 1px solid @borders;
+}
+
+.sidebar row:selected {
+    background-color: alpha(@accent_bg_color, 0.3);
+}
