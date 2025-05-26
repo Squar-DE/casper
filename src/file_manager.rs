@@ -9,7 +9,6 @@ use gtk::{
 use libadwaita::{self as adw, prelude::*};
 use crate::ui;
 
-
 pub struct FileManager {
     current_path: Rc<RefCell<PathBuf>>,
     list_box: ListBox,
@@ -28,7 +27,7 @@ impl FileManager {
             .default_width(800)
             .default_height(600)
             .build();
-
+        window.set_size_request(400, -1);
         // Create path entry for header
         let path_entry = Entry::new();
         
@@ -53,11 +52,15 @@ impl FileManager {
         // Create sidebar
         let (sidebar_scrolled, sidebar_list) = ui::create_sidebar();
 
-        // Main paned layout
+        // Main paned layout with resizing constraints
         let paned = Paned::new(Orientation::Horizontal);
         paned.set_start_child(Some(&sidebar_scrolled));
         paned.set_end_child(Some(&content_box));
         paned.set_position(200);
+        paned.set_shrink_start_child(true);
+        paned.set_shrink_end_child(false);
+        paned.set_resize_start_child(false);
+        paned.set_resize_end_child(true);
         
         // Set window content
         window.set_content(Some(&paned));
@@ -87,6 +90,8 @@ impl FileManager {
     }
 
     fn find_close_button(header_box: &gtk::Box) -> Option<Button> {
+        // This is a simple way to find the close button by looking for the last button
+        // In a more complex scenario, you might want to tag buttons with specific names
         let mut close_button = None;
         let mut child = header_box.first_child();
         

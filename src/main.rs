@@ -12,7 +12,6 @@ fn main() -> glib::ExitCode {
     let application = adw::Application::builder()
         .application_id("com.SquarDE.Casper")
         .build();
-
     application.connect_activate(|app| {
         // Load custom CSS for the headerbar
         ui::load_css();

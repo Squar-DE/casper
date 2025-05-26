@@ -33,6 +33,7 @@ pub fn load_css() {
         .sidebar-label {
             color: @sidebar_fg_color;
             margin-left: 6px;
+            min-width: 0;
         }
         .sidebar-scrolled {
             background-color: @sidebar_bg_color;
@@ -110,6 +111,7 @@ pub fn create_sidebar() -> (ScrolledWindow, ListBox) {
         
         let label = Label::new(Some(name));
         label.set_halign(gtk::Align::Start);
+        label.set_ellipsize(gtk::pango::EllipsizeMode::End);
         label.add_css_class("sidebar-label");
         
         hbox.append(&icon);
@@ -132,11 +134,13 @@ pub fn create_sidebar() -> (ScrolledWindow, ListBox) {
     sidebar_list.append(&Separator::new(Orientation::Horizontal));
     add_sidebar_item(&sidebar_list, "Trash", "user-trash");
 
-    // Enhanced sidebar scrolling
+    // Enhanced sidebar scrolling with proper constraints
     let sidebar_scrolled = ScrolledWindow::new();
     sidebar_scrolled.set_policy(PolicyType::Never, PolicyType::Automatic);
     sidebar_scrolled.set_child(Some(&sidebar_list));
-    sidebar_scrolled.set_size_request(220, -1);
+    sidebar_scrolled.set_size_request(180, -1); // Reduced minimum width
+    sidebar_scrolled.set_max_content_width(280); // Set maximum width
+    sidebar_scrolled.set_propagate_natural_width(false);
     sidebar_scrolled.add_css_class("sidebar-scrolled");
     
     (sidebar_scrolled, sidebar_list)
