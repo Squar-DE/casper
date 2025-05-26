@@ -5,5 +5,6 @@ edition = "2021"
 
 [dependencies]
 dirs-next = "2.0.0"
-gtk = { version = "0.6", package = "gtk4" }
-libadwaita = "0.4"
+glib = "0.18.1"
+gtk = { version = "0.7", package = "gtk4" }
+libadwaita = "0.5"

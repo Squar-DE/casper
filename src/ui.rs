@@ -1,12 +1,13 @@
 use gtk::prelude::*;
 use gtk::{
     Box, Button, ListBox, ListBoxRow, Orientation, PolicyType, ScrolledWindow,
-    Label, SelectionMode, Image, Box as GtkBox, Paned, Separator, Entry,
+    Label, SelectionMode, Image, Box as GtkBox, Separator, Entry,
+    Stack, SignalListItemFactory, GridView
 };
-use libadwaita as adw;
 use dirs_next;
 use std::path::Path;
 use crate::file_types;
+use crate::file_types::FileItem;
 
 pub fn load_css() {
     let provider = gtk::CssProvider::new();
@@ -41,6 +42,32 @@ pub fn load_css() {
         separator {
             background-color: alpha(@borders, 0.5);
             margin: 6px 0;
+        }
+
+        .grid-icon {
+            -gtk-icon-size: 48px;
+        }
+        
+        .grid-label {
+            color: @window_fg_color;
+            font-size: 0.9em;
+            max-width: 100px;
+            text-align: center;
+            margin-top: 6px;
+        }
+        
+        .grid-item {
+            border-radius: 6px;
+            padding: 12px;
+            transition: all 100ms ease-out;
+        }
+        
+        .grid-item:selected {
+            background-color: alpha(@accent_bg_color, 0.3);
+        }
+        
+        .grid-item:hover {
+            background-color: alpha(@accent_bg_color, 0.15);
         }
     ");
     
@@ -78,12 +105,18 @@ pub fn create_header_bar(path_entry: &Entry) -> Box {
     close_button.add_css_class("circular");
     close_button.set_tooltip_text(Some("Close"));
     
+    // Add view toggle button
+    let view_toggle = Button::from_icon_name("view-grid-symbolic");
+    view_toggle.add_css_class("flat");
+    view_toggle.set_tooltip_text(Some("Toggle View"));
+    
     // Add buttons to header
     header_box.append(&back_button);
     header_box.append(&forward_button);
     header_box.append(&up_button);
     header_box.append(&home_button);
     header_box.append(path_entry);
+    header_box.append(&view_toggle);
     header_box.append(&close_button);
     
     header_box
@@ -146,9 +179,16 @@ pub fn create_sidebar() -> (ScrolledWindow, ListBox) {
     (sidebar_scrolled, sidebar_list)
 }
 
-pub fn create_main_content_area(header_box: &Box, list_box: &ListBox) -> Box {
+pub fn create_main_content_area(header_box: &Box, list_box: &ListBox, grid_view: &GridView) -> Box {
     let scrolled_window = ScrolledWindow::new();
-    scrolled_window.set_child(Some(list_box));
+    
+    // Stack to switch between views
+    let stack = Stack::new();
+    stack.add_named(list_box, Some("list"));
+    stack.add_named(grid_view, Some("grid"));
+    stack.set_visible_child_name("grid");
+    
+    scrolled_window.set_child(Some(&stack));
     scrolled_window.set_hexpand(true);
     scrolled_window.set_vexpand(true);
 
@@ -205,4 +245,43 @@ pub fn get_sidebar_path(index: i32) -> Option<std::path::PathBuf> {
         }),
         _ => None,
     }
+}
+
+pub fn setup_grid_view_factory(factory: &SignalListItemFactory) {
+    factory.connect_setup(move |_, list_item| {
+        let box_ = Box::new(Orientation::Vertical, 6);
+        box_.set_margin_start(12);
+        box_.set_margin_end(12);
+        box_.set_margin_top(12);
+        box_.set_margin_bottom(12);
+        box_.add_css_class("grid-item");
+        
+        let icon = Image::new();
+        icon.set_icon_size(gtk::IconSize::Large);
+        icon.add_css_class("grid-icon");
+        
+        let label = Label::new(None);
+        label.set_halign(gtk::Align::Center);
+        label.add_css_class("grid-label");
+        
+        box_.append(&icon);
+        box_.append(&label);
+        
+        list_item.set_child(Some(&box_));
+    });
+    
+    factory.connect_bind(move |_, list_item| {
+        if let Some(item) = list_item.item().and_downcast::<FileItem>() {
+            if let Some(box_) = list_item.child().and_downcast::<Box>() {
+                if let Some(icon) = box_.first_child().and_downcast::<Image>() {
+                    let icon_name = item.property::<String>("icon");
+                    icon.set_from_icon_name(Some(icon_name.as_str()));
+                }
+                if let Some(label) = box_.last_child().and_downcast::<Label>() {
+                    let name = item.property::<String>("name");
+                    label.set_text(&name);
+                }
+            }
+        }
+    });
 }

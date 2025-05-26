@@ -1,4 +1,58 @@
+use glib::subclass::prelude::*;
 use std::path::Path;
+use glib::ObjectExt;
+use glib::subclass::prelude::*;
+use glib::{ParamSpec, Properties, Value};
+use std::cell::RefCell;
+
+mod imp {
+    use super::*;
+
+    #[derive(Default, Properties)]
+    #[properties(wrapper_type = super::FileItem)]
+    pub struct FileItem {
+        #[property(get, set)]
+        pub name: RefCell<String>,
+        #[property(get, set)]
+        pub path: RefCell<String>,
+        #[property(get, set)]
+        pub icon: RefCell<String>,
+    }
+
+    #[glib::object_subclass]
+    impl ObjectSubclass for FileItem {
+        const NAME: &'static str = "FileItem";
+        type Type = super::FileItem;
+    }
+
+    impl ObjectImpl for FileItem {
+        fn properties() -> &'static [ParamSpec] {
+            Self::derived_properties()
+        }
+
+        fn set_property(&self, id: usize, value: &Value, pspec: &ParamSpec) {
+            self.derived_set_property(id, value, pspec)
+        }
+
+        fn property(&self, id: usize, pspec: &ParamSpec) -> Value {
+            self.derived_property(id, pspec)
+        }
+    }
+}
+
+glib::wrapper! {
+    pub struct FileItem(ObjectSubclass<imp::FileItem>);
+}
+
+impl FileItem {
+    pub fn new(name: &str, path: &str, icon: &str) -> Self {
+        glib::Object::builder()
+            .property("name", name)
+            .property("path", path)
+            .property("icon", icon)
+            .build()
+    }
+}
 
 // File type icon mappings
 pub struct FileTypeIcon {
