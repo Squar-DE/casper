@@ -8,6 +8,7 @@ use dirs_next;
 use std::path::Path;
 use crate::file_types;
 use crate::file_types::FileItem;
+use glib::object::ObjectExt;
 
 pub fn load_css() {
     let provider = gtk::CssProvider::new();
@@ -68,6 +69,16 @@ pub fn load_css() {
         
         .grid-item:hover {
             background-color: alpha(@accent_bg_color, 0.15);
+        }
+
+        /* Dotfile styling */
+        .hidden-file-icon {
+            opacity: 0.5;
+        }
+        
+        .hidden-file-label {
+            opacity: 0.6;
+            font-style: italic;
         }
     ");
     
@@ -202,6 +213,7 @@ pub fn create_main_content_area(header_box: &Box, list_box: &ListBox, grid_view:
 // Create a row with icon and label for a file or directory
 pub fn create_file_row(path: &Path, name: &str) -> ListBoxRow {
     let row = ListBoxRow::new();
+    let is_hidden = file_types::is_hidden_file(path);
     
     // Create horizontal box for the row
     let hbox = GtkBox::new(Orientation::Horizontal, 12);
@@ -215,10 +227,20 @@ pub fn create_file_row(path: &Path, name: &str) -> ListBoxRow {
     let icon = Image::from_icon_name(icon_name);
     icon.set_icon_size(gtk::IconSize::Large);
     
+    // Apply hidden file styling
+    if is_hidden {
+        icon.add_css_class("hidden-file-icon");
+    }
+    
     // Create label
     let label = Label::new(Some(name));
     label.set_halign(gtk::Align::Start);
     label.set_hexpand(true);
+    
+    // Apply hidden file styling to label
+    if is_hidden {
+        label.add_css_class("hidden-file-label");
+    }
 
     hbox.set_hexpand(true);
     // Pack icon and label into the box
@@ -273,13 +295,30 @@ pub fn setup_grid_view_factory(factory: &SignalListItemFactory) {
     factory.connect_bind(move |_, list_item| {
         if let Some(item) = list_item.item().and_downcast::<FileItem>() {
             if let Some(box_) = list_item.child().and_downcast::<Box>() {
+                let is_hidden = item.property::<bool>("is_hidden");
+                
                 if let Some(icon) = box_.first_child().and_downcast::<Image>() {
                     let icon_name = item.property::<String>("icon");
-                    icon.set_from_icon_name(Some(icon_name.as_str()));
+                    icon.set_icon_name(Some(icon_name.as_str()));
+                    
+                    // Apply hidden file styling
+                    if is_hidden {
+                        icon.add_css_class("hidden-file-icon");
+                    } else {
+                        icon.remove_css_class("hidden-file-icon");
+                    }
                 }
+                
                 if let Some(label) = box_.last_child().and_downcast::<Label>() {
                     let name = item.property::<String>("name");
                     label.set_text(&name);
+                    
+                    // Apply hidden file styling
+                    if is_hidden {
+                        label.add_css_class("hidden-file-label");
+                    } else {
+                        label.remove_css_class("hidden-file-label");
+                    }
                 }
             }
         }

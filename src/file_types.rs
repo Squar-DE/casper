@@ -1,7 +1,6 @@
 use glib::subclass::prelude::*;
 use std::path::Path;
-use glib::ObjectExt;
-use glib::subclass::prelude::*;
+use glib::object::ObjectExt;
 use glib::{ParamSpec, Properties, Value};
 use std::cell::RefCell;
 
@@ -17,6 +16,8 @@ mod imp {
         pub path: RefCell<String>,
         #[property(get, set)]
         pub icon: RefCell<String>,
+        #[property(get, set)]
+        pub is_hidden: RefCell<bool>,
     }
 
     #[glib::object_subclass]
@@ -45,11 +46,12 @@ glib::wrapper! {
 }
 
 impl FileItem {
-    pub fn new(name: &str, path: &str, icon: &str) -> Self {
+    pub fn new(name: &str, path: &str, icon: &str, is_hidden: bool) -> Self {
         glib::Object::builder()
             .property("name", name)
             .property("path", path)
             .property("icon", icon)
+            .property("is_hidden", is_hidden)
             .build()
     }
 }
@@ -123,6 +125,16 @@ pub const FILE_TYPE_ICONS: &[FileTypeIcon] = &[
     FileTypeIcon { extension: "sh", icon_name: "application-x-executable" },
     FileTypeIcon { extension: "appimage", icon_name: "application-x-executable" },
 ];
+
+// Check if a file is hidden (dotfile)
+pub fn is_hidden_file(file_path: &Path) -> bool {
+    if let Some(file_name) = file_path.file_name() {
+        if let Some(name_str) = file_name.to_str() {
+            return name_str.starts_with('.');
+        }
+    }
+    false
+}
 
 // Get icon name for file based on extension
 pub fn get_icon_for_file(file_path: &Path) -> &'static str {

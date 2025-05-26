@@ -48,11 +48,11 @@ impl FileManager {
         // Create window
         let window = adw::ApplicationWindow::builder()
             .application(app)
-            .title("Simple File Manager")
+            .title("Casper -- File Manager")
             .default_width(800)
             .default_height(600)
             .build();
-        window.set_size_request(500, -1);
+        window.set_size_request(700, -1);
         
         // Create path entry for header
         let path_entry = Entry::new();
@@ -62,11 +62,58 @@ impl FileManager {
         ui::setup_grid_view_factory(&factory);
         let selection_model = SingleSelection::new(None::<gio::ListStore>);
         let grid_view = GridView::new(Some(selection_model), Some(factory));
+        grid_view.set_max_columns(8);
+        grid_view.set_min_columns(2);
+        grid_view.set_enable_rubberband(false);
         
         // Create custom header bar
         let header_box = ui::create_header_bar(&path_entry);
+
+        // First create the drag source
+let drag_source = gtk::GestureDrag::new();
+
+// Get a weak reference to the header_box that we can use in the closure
+let header_box_weak = header_box.downgrade();
+
+// Connect the drag begin signal
+drag_source.connect_drag_begin(glib::clone!(@weak window => move |gesture, x, y| {
+    // Try to get the strong reference back
+    if let Some(header_box) = header_box_weak.upgrade() {
+        // Get the widget at the click position
+        if let Some(widget) = header_box.pick(
+            x, 
+            y, 
+            gtk::PickFlags::DEFAULT.difference(gtk::PickFlags::INSENSITIVE)
+        ) {
+            // Don't start drag if clicking on a button
+            if is_button_or_has_button_ancestor(&widget) {
+                gesture.set_state(gtk::EventSequenceState::Denied);
+                return;
+            }
+        }
+
+        if let Some(surface) = window.surface() {
+            if let Ok(toplevel) = surface.downcast::<gtk::gdk::Toplevel>() {
+                if let Some(device) = gesture.device() {
+                    if let Some((start_x, start_y)) = gesture.start_point() {
+                        toplevel.begin_move(
+                            &device,
+                            1, // button
+                            start_x,
+                            start_y,
+                            gtk::gdk::CURRENT_TIME
+                        );
+                    }
+                }
+            }
+        }
+    }
+}));
+
+// Now we can safely add the controller since we didn't move header_box
+header_box.add_controller(drag_source);
         
-        // Connect close button functionality (find it in the header_box)
+        // Connect close button functionality if it exists in the header box
         if let Some(close_button) = Self::find_close_button(&header_box) {
             close_button.connect_clicked(glib::clone!(@weak window => move |_| {
                 window.close();
@@ -126,6 +173,7 @@ impl FileManager {
         // Set up event handlers
         file_manager.setup_sidebar_handlers();
         file_manager.setup_file_list_handlers();
+        file_manager.setup_grid_view_handlers();
         file_manager.setup_navigation_handlers(&header_box);
         file_manager.populate_file_list();
         
@@ -133,23 +181,28 @@ impl FileManager {
     }
 
     fn find_close_button(header_box: &gtk::Box) -> Option<Button> {
-        let mut close_button = None;
-        let mut child = header_box.first_child();
-        
-        while let Some(widget) = child {
-            let next_sibling = widget.next_sibling();
-            // Clone widget before downcast to avoid move
+        fn search_widget_tree(widget: &gtk::Widget) -> Option<Button> {
+            // Check if this widget is a button with close icon
             if let Ok(button) = widget.clone().downcast::<Button>() {
-                // Check if this looks like a close button (has close icon)
-                if button.icon_name().as_deref() == Some("window-close-symbolic") {
-                    close_button = Some(button);
-                    break;
+                if button.icon_name().as_deref() == Some("window-close-symbolic") ||
+                   button.icon_name().as_deref() == Some("window-close") {
+                    return Some(button);
                 }
             }
-            child = next_sibling;
+            
+            // Search child widgets recursively
+            let mut child = widget.first_child();
+            while let Some(child_widget) = child {
+                if let Some(found_button) = search_widget_tree(&child_widget) {
+                    return Some(found_button);
+                }
+                child = child_widget.next_sibling();
+            }
+            
+            None
         }
         
-        close_button
+        search_widget_tree(&header_box.clone().upcast::<gtk::Widget>())
     }
 
     fn setup_sidebar_handlers(&self) {
@@ -157,25 +210,16 @@ impl FileManager {
         let grid_view_clone = self.grid_view.clone();
         let path_entry_clone = self.path_entry.clone();
         let row_paths_clone = self.row_paths.clone();
+        let current_path_clone = self.current_path.clone();
         
         self.sidebar_list.connect_row_activated(move |_, row| {
             let index = row.index();
             if let Some(path) = ui::get_sidebar_path(index) {
+                *current_path_clone.borrow_mut() = path.clone();
                 Self::populate_files(&list_box_clone, &grid_view_clone, &path, &row_paths_clone);
                 path_entry_clone.set_text(&path.to_string_lossy());
             }
         });
-    }
-
-    fn toggle_view_mode(&self) {
-        let mut view_mode = self.view_mode.borrow_mut();
-        *view_mode = match *view_mode {
-            ViewMode::List => ViewMode::Grid,
-            ViewMode::Grid => ViewMode::List,
-        };
-        
-        self.list_box.set_visible(*view_mode == ViewMode::List);
-        self.grid_view.set_visible(*view_mode == ViewMode::Grid);
     }
 
     fn setup_file_list_handlers(&self) {
@@ -205,6 +249,33 @@ impl FileManager {
         });
     }
 
+    fn setup_grid_view_handlers(&self) {
+        let current_path_clone = self.current_path.clone();
+        let path_entry_clone = self.path_entry.clone();
+        let row_paths_clone = self.row_paths.clone();
+        let list_box_clone = self.list_box.clone();
+        let grid_view_clone = self.grid_view.clone();
+        
+        self.grid_view.connect_activate(move |grid_view, position| {
+            let path = {
+                let paths = row_paths_clone.borrow();
+                if position as usize >= paths.len() {
+                    return;
+                }
+                paths[position as usize].clone()
+            };
+
+            if path.is_dir() {
+                *current_path_clone.borrow_mut() = path.clone();
+                Self::populate_files(&list_box_clone, &grid_view_clone, &path, &row_paths_clone);
+                path_entry_clone.set_text(&path.to_string_lossy());
+            } else {
+                let file = gio::File::for_path(&path);
+                let _ = gio::AppInfo::launch_default_for_uri(&file.uri(), None::<&gio::AppLaunchContext>);
+            }
+        });
+    }
+
     fn setup_navigation_handlers(&self, header_box: &gtk::Box) {
         // Find navigation buttons
         let mut buttons = Vec::new();
@@ -222,85 +293,62 @@ impl FileManager {
             let view_mode_clone = self.view_mode.clone();
             let list_box_clone = self.list_box.clone();
             let grid_view_clone = self.grid_view.clone();
-            
-            buttons[4].connect_clicked(move |_| {
+            let view_toggle_button = buttons[4].clone(); // Get a clone of the button
+    
+            view_toggle_button.connect_clicked(move |button| {
                 let mut view_mode = view_mode_clone.borrow_mut();
                 *view_mode = match *view_mode {
-                    ViewMode::List => ViewMode::Grid,
-                    ViewMode::Grid => ViewMode::List,
+                    ViewMode::List => {
+                        button.set_icon_name("view-list-symbolic"); // Set to list icon
+                        ViewMode::Grid
+                    },
+                    ViewMode::Grid => {
+                        button.set_icon_name("view-grid-symbolic"); // Set to grid icon
+                        ViewMode::List
+                    },
                 };
                 
-                list_box_clone.set_visible(*view_mode == ViewMode::List);
-                grid_view_clone.set_visible(*view_mode == ViewMode::Grid);
+            list_box_clone.set_visible(*view_mode == ViewMode::List);
+            grid_view_clone.set_visible(*view_mode == ViewMode::Grid);
+            });
+        }
+
+        // Setup up button (index 2)
+        if buttons.len() >= 3 {
+            let current_path_clone = self.current_path.clone();
+            let list_box_clone = self.list_box.clone();
+            let grid_view_clone = self.grid_view.clone();
+            let path_entry_clone = self.path_entry.clone();
+            let row_paths_clone = self.row_paths.clone();
+            
+            buttons[2].connect_clicked(move |_| {
+                let current = current_path_clone.borrow().clone();
+                if let Some(parent) = current.parent() {
+                    *current_path_clone.borrow_mut() = parent.to_path_buf();
+                    Self::populate_files(&list_box_clone, &grid_view_clone, parent, &row_paths_clone);
+                    path_entry_clone.set_text(&parent.to_string_lossy());
+                }
+            });
+        }
+
+        // Setup home button (index 3)
+        if buttons.len() >= 4 {
+            let current_path_clone = self.current_path.clone();
+            let list_box_clone = self.list_box.clone();
+            let grid_view_clone = self.grid_view.clone();
+            let path_entry_clone = self.path_entry.clone();
+            let row_paths_clone = self.row_paths.clone();
+            
+            buttons[3].connect_clicked(move |_| {
+                if let Some(home_dir) = dirs_next::home_dir() {
+                    *current_path_clone.borrow_mut() = home_dir.clone();
+                    Self::populate_files(&list_box_clone, &grid_view_clone, &home_dir, &row_paths_clone);
+                    path_entry_clone.set_text(&home_dir.to_string_lossy());
+                }
             });
         }
     }
-
-    fn setup_back_button(&self, back_button: &Button) {
-        let list_box_clone = self.list_box.clone();
-        let grid_view_clone = self.grid_view.clone();
-        let current_path_clone = self.current_path.clone();
-        let path_entry_clone = self.path_entry.clone();
-        let row_paths_clone = self.row_paths.clone();
-        
-        back_button.connect_clicked(move |_| {
-            Self::populate_files(&list_box_clone, &grid_view_clone, &current_path_clone.borrow(), &row_paths_clone);
-            path_entry_clone.set_text(&current_path_clone.borrow().to_string_lossy());
-        });
-    }
     
-    fn setup_up_button(&self, up_button: &Button) {
-        let list_box_clone = self.list_box.clone();
-        let grid_view_clone = self.grid_view.clone();
-        let current_path_clone = self.current_path.clone();
-        let path_entry_clone = self.path_entry.clone();
-        let row_paths_clone = self.row_paths.clone();
-        
-        up_button.connect_clicked(move |_| {
-            let current = current_path_clone.borrow().clone();
-            if let Some(parent) = current.parent() {
-                *current_path_clone.borrow_mut() = parent.to_path_buf();
-                FileManager::populate_files(&list_box_clone, &grid_view_clone, parent, &row_paths_clone);
-                path_entry_clone.set_text(&current_path_clone.borrow().to_string_lossy());
-            }
-        });
-    }
-
-    fn setup_home_button(&self, home_button: &Button) {
-        let current_path_clone = self.current_path.clone();
-        let list_box_clone = self.list_box.clone();
-        let grid_view_clone = self.grid_view.clone();
-        let path_entry_clone = self.path_entry.clone();
-        let row_paths_clone = self.row_paths.clone();
-
-        home_button.connect_clicked(move |_| {
-            if let Some(home_dir) = dirs_next::home_dir() {
-                *current_path_clone.borrow_mut() = home_dir.clone();
-                Self::populate_files(&list_box_clone, &grid_view_clone, &home_dir, &row_paths_clone);
-                path_entry_clone.set_text(&current_path_clone.borrow().to_string_lossy());
-            }
-        });
-    }
-
-    fn setup_path_entry_handler(&self) {
-        let current_path_clone = self.current_path.clone();
-        let list_box_clone = self.list_box.clone();
-        let grid_view_clone = self.grid_view.clone();
-        let row_paths_clone = self.row_paths.clone();
-        
-        self.path_entry.connect_activate(move |entry| {
-            let text = entry.text();
-            let path = PathBuf::from(text.as_str());
-            
-            if path.exists() && path.is_dir() {
-                *current_path_clone.borrow_mut() = path.clone();
-                Self::populate_files(&list_box_clone, &grid_view_clone, &path, &row_paths_clone);
-            } else {
-                // Show error or reset to current path
-                entry.set_text(&current_path_clone.borrow().to_string_lossy());
-            }
-        });
-    }
 
     fn update_path_display(&self) {
         let path_str = self.current_path.borrow().to_string_lossy().to_string();
@@ -311,6 +359,15 @@ impl FileManager {
         let current_path = self.current_path.borrow();
         Self::populate_files(&self.list_box, &self.grid_view, &current_path, &self.row_paths);
         self.update_path_display();
+    }
+
+    // Truncate filename if longer than 50 characters
+    fn truncate_filename(name: &str) -> String {
+        if name.len() > 25 {
+            format!("{}...", &name[..22])
+        } else {
+            name.to_string()
+        }
     }
     
     fn populate_files(list_box: &ListBox, grid_view: &GridView, path: &Path, row_paths: &Rc<RefCell<Vec<PathBuf>>>) {
@@ -351,20 +408,23 @@ impl FileManager {
             for entry in directories {
                 let file_name = entry.file_name();
                 let file_name = file_name.to_string_lossy();
+                let truncated_name = Self::truncate_filename(&file_name);
                 let path = entry.path();
+                let is_hidden = crate::file_types::is_hidden_file(&path);
             
                 // Store this path in our vector
                 row_paths.borrow_mut().push(path.clone());
             
                 // Create row for list view
-                let row = ui::create_file_row(&path, &file_name);
+                let row = ui::create_file_row(&path, &truncated_name);
                 list_box.append(&row);
                 
                 // Create item for grid view
                 let item = FileItem::new(
-                    &file_name,
+                    &truncated_name,
                     &path.to_string_lossy(),
-                    crate::file_types::get_icon_for_file(&path)
+                    crate::file_types::get_icon_for_file(&path),
+                    is_hidden
                 );
                 store.append(&item);
             }
@@ -373,20 +433,23 @@ impl FileManager {
             for entry in files {
                 let file_name = entry.file_name();
                 let file_name = file_name.to_string_lossy();
+                let truncated_name = Self::truncate_filename(&file_name);
                 let path = entry.path();
+                let is_hidden = crate::file_types::is_hidden_file(&path);
             
                 // Store this path in our vector
                 row_paths.borrow_mut().push(path.clone());
             
                 // Create row for list view
-                let row = ui::create_file_row(&path, &file_name);
+                let row = ui::create_file_row(&path, &truncated_name);
                 list_box.append(&row);
                 
                 // Create item for grid view
                 let item = FileItem::new(
-                    &file_name,
+                    &truncated_name,
                     &path.to_string_lossy(),
-                    crate::file_types::get_icon_for_file(&path)
+                    crate::file_types::get_icon_for_file(&path),
+                    is_hidden
                 );
                 store.append(&item);
             }
@@ -401,3 +464,21 @@ impl FileManager {
         self.window.show();
     }
 }
+    fn is_button_or_has_button_ancestor(widget: &gtk::Widget) -> bool {
+        // Check if this widget is a button
+        if widget.is::<Button>() {
+            return true;
+        }
+    
+        // Check parent widgets recursively
+        let mut parent = widget.parent();
+        while let Some(p) = parent {
+            if p.is::<Button>() {
+                return true;
+            }
+            parent = p.parent();
+        }
+    
+        false
+    }
+
