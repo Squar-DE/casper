@@ -9,7 +9,7 @@ use file_manager::FileManager;
 
 fn main() -> glib::ExitCode {
     let application = adw::Application::builder()
-        .application_id("com.SquarDE.Casper")
+        .application_id("org.SquarDE.Casper")
         .build();
     application.connect_activate(|app| {
         ui::load_css();
