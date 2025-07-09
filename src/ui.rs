@@ -1,3 +1,5 @@
+// Enhanced ui.rs with better external drive support
+
 use gtk::prelude::*;
 use gtk::{
     Box, Button, ListBox, ListBoxRow, Orientation, PolicyType, ScrolledWindow,
@@ -5,10 +7,11 @@ use gtk::{
     Stack, SignalListItemFactory, GridView
 };
 use dirs_next;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use crate::file_types;
 use crate::file_types::FileItem;
 use glib::object::ObjectExt;
+use std::fs;
 
 pub fn load_css() {
     let provider = gtk::CssProvider::new();
@@ -80,6 +83,36 @@ pub fn load_css() {
             opacity: 0.6;
             font-style: italic;
         }
+
+        /* External drive styling */
+        .external-drive-row {
+            border-radius: 6px;
+            margin: 2px 6px;
+            transition: all 100ms ease-out;
+        }
+        
+        .external-drive-row:selected {
+            background-color: alpha(@accent_bg_color, 0.3);
+        }
+        
+        .external-drive-row:hover {
+            background-color: alpha(@accent_bg_color, 0.15);
+        }
+        
+        .drive-label {
+            color: @sidebar_fg_color;
+            margin-left: 6px;
+            min-width: 0;
+            font-size: 0.9em;
+        }
+
+        /* Drive section header */
+        .drives-header {
+            color: @sidebar_fg_color;
+            opacity: 0.7;
+            font-weight: bold;
+            font-size: 0.85em;
+        }
     ");
     
     // Add provider to default display
@@ -133,6 +166,112 @@ pub fn create_header_bar(path_entry: &Entry) -> Box {
     header_box
 }
 
+// Structure to hold drive information
+#[derive(Debug, Clone)]
+pub struct DriveInfo {
+    pub name: String,
+    pub path: PathBuf,
+    pub icon: String,
+    pub drive_type: DriveType,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DriveType {
+    System,
+    Removable,
+    Network,
+}
+
+// Enhanced function to detect external drives with better categorization
+pub fn get_external_drives() -> Vec<DriveInfo> {
+    let mut drives = Vec::new();
+    
+    // Check common mount points for removable media
+    let mount_points = [
+        ("/media", DriveType::Removable),
+        ("/mnt", DriveType::Removable),
+        ("/run/media", DriveType::Removable),
+    ];
+    
+    for (mount_point, drive_type) in &mount_points {
+        if let Ok(entries) = fs::read_dir(mount_point) {
+            for entry in entries.filter_map(Result::ok) {
+                let path = entry.path();
+                if path.is_dir() {
+                    // For /run/media, we need to go one level deeper
+                    if mount_point == &"/run/media" {
+                        if let Ok(user_dirs) = fs::read_dir(&path) {
+                            for user_entry in user_dirs.filter_map(Result::ok) {
+                                let user_path = user_entry.path();
+                                let drive_name = user_path
+                                    .file_name()
+                                    .and_then(|n| n.to_str())
+                                    .unwrap_or("Unknown Drive")
+                                    .to_string();
+                                
+                                drives.push(DriveInfo {
+                                    name: format!("📱 {}", drive_name),
+                                    path: user_path,
+                                    icon: "drive-removable-media".to_string(),
+                                    drive_type: drive_type.clone(),
+                                });
+                            }
+                        }
+                    } else {
+                        let drive_name = path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("Unknown Drive")
+                            .to_string();
+                        
+                        drives.push(DriveInfo {
+                            name: format!("💾 {}", drive_name),
+                            path,
+                            icon: "drive-removable-media".to_string(),
+                            drive_type: drive_type.clone(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+    
+    // Check for block devices that might be unmounted
+    if let Ok(entries) = fs::read_dir("/dev/disk/by-id") {
+        for entry in entries.filter_map(Result::ok) {
+            let path = entry.path();
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                // Skip if it's a partition or other special device
+                if !name.contains("part") && 
+                   (name.contains("usb") || name.contains("ata")) {
+                    let drive_name = name
+                        .split('-')
+                        .last()
+                        .unwrap_or("Drive")
+                        .to_string();
+                    
+                    // Try to find the actual device path
+                    if let Ok(target) = fs::read_link(&path) {
+                        let device_path = PathBuf::from("/dev").join(target.file_name().unwrap_or_default());
+                        
+                        drives.push(DriveInfo {
+                            name: format!("⏏️ {}", drive_name),
+                            path: device_path,
+                            icon: "drive-harddisk".to_string(),
+                            drive_type: DriveType::Removable,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    
+    // Sort drives by name
+    drives.sort_by(|a, b| a.name.cmp(&b.name));
+    
+    drives
+}
+
 pub fn create_sidebar() -> (ScrolledWindow, ListBox) {
     let sidebar_list = ListBox::new();
     sidebar_list.add_css_class("navigation-sidebar");
@@ -177,13 +316,59 @@ pub fn create_sidebar() -> (ScrolledWindow, ListBox) {
     
     sidebar_list.append(&Separator::new(Orientation::Horizontal));
     add_sidebar_item(&sidebar_list, "Trash", "user-trash");
+    
+    // Add external drives section
+    let drives = get_external_drives();
+    if !drives.is_empty() {
+        sidebar_list.append(&Separator::new(Orientation::Horizontal));
+        
+        // Add drives section header
+        let drives_row = ListBoxRow::new();
+        drives_row.set_selectable(false);
+        drives_row.set_activatable(false);
+        
+        let drives_label = Label::new(Some("DRIVES"));
+        drives_label.set_halign(gtk::Align::Start);
+        drives_label.set_margin_start(12);
+        drives_label.set_margin_top(8);
+        drives_label.set_margin_bottom(4);
+        drives_label.add_css_class("drives-header");
+        drives_row.set_child(Some(&drives_label));
+        sidebar_list.append(&drives_row);
+        
+        // Add all drives
+        for drive in &drives {
+            let row = ListBoxRow::new();
+            row.add_css_class("external-drive-row");
+            
+            let hbox = GtkBox::new(Orientation::Horizontal, 12);
+            hbox.set_margin_start(12);
+            hbox.set_margin_end(12);
+            hbox.set_margin_top(4);
+            hbox.set_margin_bottom(4);
+            
+            let icon = Image::from_icon_name(&drive.icon);
+            icon.set_icon_size(gtk::IconSize::Normal);
+            icon.add_css_class("sidebar-icon");
+            
+            let label = Label::new(Some(&drive.name));
+            label.set_halign(gtk::Align::Start);
+            label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+            label.add_css_class("drive-label");
+            
+            hbox.append(&icon);
+            hbox.append(&label);
+            row.set_child(Some(&hbox));
+            sidebar_list.append(&row);
+        }
+    }
 
     // Enhanced sidebar scrolling with proper constraints
     let sidebar_scrolled = ScrolledWindow::new();
     sidebar_scrolled.set_policy(PolicyType::Never, PolicyType::Automatic);
     sidebar_scrolled.set_child(Some(&sidebar_list));
-    sidebar_scrolled.set_size_request(180, -1); // Reduced minimum width
-    sidebar_scrolled.set_max_content_width(280); // Set maximum width
+    sidebar_scrolled.set_size_request(200, -1);
+    sidebar_scrolled.set_max_content_width(300);
     sidebar_scrolled.set_propagate_natural_width(false);
     sidebar_scrolled.add_css_class("sidebar-scrolled");
     
@@ -252,6 +437,10 @@ pub fn create_file_row(path: &Path, name: &str) -> ListBoxRow {
 }
 
 pub fn get_sidebar_path(index: i32) -> Option<std::path::PathBuf> {
+    // Get the drives to calculate correct indices
+    let drives = get_external_drives();
+    let base_items = 9; // Home, separator, Downloads, Documents, Pictures, Music, Videos, separator, Trash
+    
     match index {
         0 => dirs_next::home_dir(),
         1 => None, // Separator
@@ -265,7 +454,23 @@ pub fn get_sidebar_path(index: i32) -> Option<std::path::PathBuf> {
             path.push(".local/share/Trash/files");
             path
         }),
-        _ => None,
+        _ => {
+            // Handle drives section
+            if !drives.is_empty() {
+                let drives_section_start = base_items;
+                if index == drives_section_start {
+                    return None; // Separator before drives
+                } else if index == drives_section_start + 1 {
+                    return None; // "DRIVES" header
+                } else if index > drives_section_start + 1 {
+                    let drive_index = (index - (drives_section_start + 2)) as usize;
+                    if drive_index < drives.len() {
+                        return Some(drives[drive_index].path.clone());
+                    }
+                }
+            }
+            None
+        }
     }
 }
 
