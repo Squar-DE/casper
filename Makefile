@@ -6,7 +6,7 @@ LIBS = `pkg-config --libs gtk4 libadwaita-1 gio-2.0`
 
 TARGET = casper
 SRCDIR = .
-SOURCES = main.c utils.c navigation.c directory.c views.c actions.c
+SOURCES = main.c utils.c navigation.c directory.c views.c actions.c sidebar.c
 OBJECTS = $(SOURCES:.c=.o)
 
 .PHONY: all clean install

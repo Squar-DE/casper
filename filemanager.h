@@ -12,6 +12,7 @@ typedef struct {
     GtkApplication *app;
     GtkApplicationWindow *window;
     AdwHeaderBar *header_bar;
+    AdwHeaderBar *sidebar_header;
     GtkButton *back_btn;
     GtkButton *forward_btn;
     GtkButton *up_btn;
@@ -32,6 +33,7 @@ typedef struct {
     GtkPopover *context_menu;
     GtkWidget *selected_item;
     GtkStack *view_stack;
+    GtkListBox *sidebar_listbox;
     gboolean is_grid_view;
 } FileManager;
 
@@ -59,6 +61,10 @@ void setup_factory(GtkListItemFactory *factory, GtkListItem *list_item, FileMana
 void bind_factory(GtkListItemFactory *factory, GtkListItem *list_item, FileManager *fm);
 void setup_grid_factory(GtkListItemFactory *factory, GtkListItem *list_item, FileManager *fm);
 void bind_grid_factory(GtkListItemFactory *factory, GtkListItem *list_item, FileManager *fm);
+void setup_sidebar(FileManager *fm);
+void on_sidebar_row_activated(GtkListBox *listbox, GtkListBoxRow *row, FileManager *fm);
+void populate_sidebar(FileManager *fm);
+void add_sidebar_item(FileManager *fm, const char *name, const char *icon, GFile *file, gboolean is_separator);
 
 // Function declarations from actions.c
 void on_refresh_action(GSimpleAction *action, GVariant *parameter, FileManager *fm);

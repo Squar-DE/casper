@@ -29,22 +29,57 @@ static void on_activate(GtkApplication *app, FileManager *casper) {
     gtk_window_set_title(GTK_WINDOW(casper->window), "File Manager");
     gtk_window_set_default_size(GTK_WINDOW(casper->window), 900, 600);
     
-    // Create main box
-    GtkWidget *main_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-    adw_application_window_set_content(ADW_APPLICATION_WINDOW(casper->window), main_box);
-    
-    // Create header bar
-    casper->header_bar = ADW_HEADER_BAR(adw_header_bar_new());
-    gtk_box_append(GTK_BOX(main_box), GTK_WIDGET(casper->header_bar));
-    
-    // Create navigation buttons
-    GtkWidget *nav_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-    gtk_widget_add_css_class(nav_box, "linked");
-    
-    casper->back_btn = GTK_BUTTON(gtk_button_new_from_icon_name("go-previous-symbolic"));
-    casper->forward_btn = GTK_BUTTON(gtk_button_new_from_icon_name("go-next-symbolic"));
-    casper->up_btn = GTK_BUTTON(gtk_button_new_from_icon_name("go-up-symbolic"));
-    
+    // Create main horizontal box (sidebar + content)
+GtkWidget *main_hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+adw_application_window_set_content(ADW_APPLICATION_WINDOW(casper->window), main_hbox);
+
+// Create sidebar section (left side)
+GtkWidget *sidebar_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+gtk_widget_set_size_request(sidebar_vbox, 220, -1);  // Fixed width for sidebar
+gtk_widget_set_hexpand(sidebar_vbox, FALSE);
+gtk_box_append(GTK_BOX(main_hbox), sidebar_vbox);
+
+// Create sidebar header bar
+casper->sidebar_header = ADW_HEADER_BAR(adw_header_bar_new());
+adw_header_bar_set_title_widget(casper->sidebar_header, gtk_label_new("Places"));
+adw_header_bar_set_show_start_title_buttons(casper->sidebar_header, FALSE);
+adw_header_bar_set_show_end_title_buttons(casper->sidebar_header, FALSE);
+gtk_box_append(GTK_BOX(sidebar_vbox), GTK_WIDGET(casper->sidebar_header));
+
+// Add a search button to sidebar header (placeholder for future functionality)
+GtkWidget *sidebar_search_btn = gtk_button_new_from_icon_name("system-search-symbolic");
+gtk_widget_set_tooltip_text(sidebar_search_btn, "Search Places");
+adw_header_bar_pack_end(casper->sidebar_header, sidebar_search_btn);
+
+// Setup sidebar listbox
+setup_sidebar(casper);
+gtk_box_append(GTK_BOX(sidebar_vbox), GTK_WIDGET(casper->sidebar_listbox));
+
+// Add a vertical separator between sidebar and content
+GtkWidget *separator = gtk_separator_new(GTK_ORIENTATION_VERTICAL);
+gtk_box_append(GTK_BOX(main_hbox), separator);
+
+// Create content section (right side) - this will expand to fill space
+GtkWidget *content_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+gtk_widget_set_hexpand(content_vbox, TRUE);
+gtk_box_append(GTK_BOX(main_hbox), content_vbox);
+
+// Create main header bar (for navigation)
+casper->header_bar = ADW_HEADER_BAR(adw_header_bar_new());
+adw_header_bar_set_show_start_title_buttons(casper->header_bar, TRUE);
+adw_header_bar_set_show_end_title_buttons(casper->header_bar, TRUE);
+gtk_box_append(GTK_BOX(content_vbox), GTK_WIDGET(casper->header_bar));
+
+// ... rest of your existing code for navigation buttons, path entry, etc. stays the same ...
+
+// Create navigation buttons (existing code)
+GtkWidget *nav_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+gtk_widget_add_css_class(nav_box, "linked");
+
+casper->back_btn = GTK_BUTTON(gtk_button_new_from_icon_name("go-previous-symbolic"));
+casper->forward_btn = GTK_BUTTON(gtk_button_new_from_icon_name("go-next-symbolic"));
+casper->up_btn = GTK_BUTTON(gtk_button_new_from_icon_name("go-up-symbolic"));
+
     gtk_box_append(GTK_BOX(nav_box), GTK_WIDGET(casper->back_btn));
     gtk_box_append(GTK_BOX(nav_box), GTK_WIDGET(casper->forward_btn));
     gtk_box_append(GTK_BOX(nav_box), GTK_WIDGET(casper->up_btn));
@@ -99,7 +134,7 @@ static void on_activate(GtkApplication *app, FileManager *casper) {
     casper->scrolled_window = GTK_SCROLLED_WINDOW(gtk_scrolled_window_new());
     gtk_scrolled_window_set_child(casper->scrolled_window, stack);
     gtk_widget_set_vexpand(GTK_WIDGET(casper->scrolled_window), TRUE);
-    gtk_box_append(GTK_BOX(main_box), GTK_WIDGET(casper->scrolled_window));
+    gtk_box_append(GTK_BOX(content_vbox), GTK_WIDGET(casper->scrolled_window));
 
     // Store stack reference in FileManager struct for later access
     casper->view_stack = GTK_STACK(stack);    
