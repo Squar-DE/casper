@@ -20,13 +20,3 @@ void on_open_action(GSimpleAction *action, GVariant *parameter, FileManager *cas
         }
     }
 }
-
-// Create context menu
-void create_context_menu(FileManager *casper) {
-    GMenu *menu = g_menu_new();
-    g_menu_append(menu, "Open", "app.open");
-    g_menu_append(menu, "Refresh", "app.refresh");
-    
-    casper->context_menu = GTK_POPOVER(gtk_popover_menu_new_from_model(G_MENU_MODEL(menu)));
-    gtk_widget_set_parent(GTK_WIDGET(casper->context_menu), GTK_WIDGET(casper->list_view));
-}

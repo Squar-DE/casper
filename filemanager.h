@@ -19,6 +19,7 @@ typedef struct {
     GtkButton *view_toggle_btn;
     GtkEntry *path_entry;
     GtkScrolledWindow *scrolled_window;
+    GFile *selected_file;
     GtkListView *list_view;
     GtkGridView *grid_view;
     GtkStringList *list_string_list;
@@ -30,12 +31,26 @@ typedef struct {
     GQueue *back_history;
     GQueue *forward_history;
     
-    GtkPopover *context_menu;
+    GtkPopoverMenu *context_menu;
     GtkWidget *selected_item;
     GtkStack *view_stack;
     GtkListBox *sidebar_listbox;
     gboolean is_grid_view;
 } FileManager;
+
+
+// Context menu functions
+void show_context_menu(FileManager *fm, GFile *file, GdkRectangle *rect);
+void on_context_menu_open(GSimpleAction *action, GVariant *parameter, FileManager *fm);
+void on_context_menu_open_with(GSimpleAction *action, GVariant *parameter, FileManager *fm);
+void on_context_menu_cut(GSimpleAction *action, GVariant *parameter, FileManager *fm);
+void on_context_menu_copy(GSimpleAction *action, GVariant *parameter, FileManager *fm);
+void on_context_menu_paste(GSimpleAction *action, GVariant *parameter, FileManager *casper);
+void on_context_menu_move_to(GSimpleAction *action, GVariant *parameter, FileManager *fm);
+void on_context_menu_delete(GSimpleAction *action, GVariant *parameter, FileManager *fm);
+void setup_context_menu_actions(GtkApplication *app);
+gboolean on_right_click(GtkGestureClick *gesture, int n_press, double x, double y, FileManager *fm);
+
 
 // Function declarations from utils.c
 char* format_file_size(goffset size);
@@ -69,6 +84,5 @@ void add_sidebar_item(FileManager *fm, const char *name, const char *icon, GFile
 // Function declarations from actions.c
 void on_refresh_action(GSimpleAction *action, GVariant *parameter, FileManager *fm);
 void on_open_action(GSimpleAction *action, GVariant *parameter, FileManager *fm);
-void create_context_menu(FileManager *fm);
 
 #endif // FILEMANAGER_H

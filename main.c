@@ -28,7 +28,13 @@ static void on_activate(GtkApplication *app, FileManager *casper) {
     casper->window = GTK_APPLICATION_WINDOW(adw_application_window_new(app));
     gtk_window_set_title(GTK_WINDOW(casper->window), "File Manager");
     gtk_window_set_default_size(GTK_WINDOW(casper->window), 900, 600);
+   
+    // Store FileManager in application data for context menu actions
+    g_object_set_data(G_OBJECT(app), "file-manager", casper);
     
+    // Add context menu actions (this should come AFTER storing the FileManager)
+    setup_context_menu_actions(app);
+
     // Create main horizontal box (sidebar + content)
 GtkWidget *main_hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 adw_application_window_set_content(ADW_APPLICATION_WINDOW(casper->window), main_hbox);
@@ -153,6 +159,17 @@ casper->up_btn = GTK_BUTTON(gtk_button_new_from_icon_name("go-up-symbolic"));
     g_signal_connect(casper->grid_view, "activate", G_CALLBACK(on_item_activated_grid), casper);
     g_signal_connect(casper->window, "destroy", G_CALLBACK(on_window_destroy), casper);
     
+    // Add right-click gestures
+    GtkGesture *list_gesture = gtk_gesture_click_new();
+    gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(list_gesture), GDK_BUTTON_SECONDARY);
+    g_signal_connect(list_gesture, "pressed", G_CALLBACK(on_right_click), casper);
+    gtk_widget_add_controller(GTK_WIDGET(casper->list_view), GTK_EVENT_CONTROLLER(list_gesture));
+    
+    GtkGesture *grid_gesture = gtk_gesture_click_new();
+    gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(grid_gesture), GDK_BUTTON_SECONDARY);
+    g_signal_connect(grid_gesture, "pressed", G_CALLBACK(on_right_click), casper);
+    gtk_widget_add_controller(GTK_WIDGET(casper->grid_view), GTK_EVENT_CONTROLLER(grid_gesture));
+
     // Create actions
     GSimpleAction *refresh_action = g_simple_action_new("refresh", NULL);
     g_signal_connect(refresh_action, "activate", G_CALLBACK(on_refresh_action), casper);
@@ -162,6 +179,10 @@ casper->up_btn = GTK_BUTTON(gtk_button_new_from_icon_name("go-up-symbolic"));
     g_signal_connect(open_action, "activate", G_CALLBACK(on_open_action), casper);
     g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(open_action));
     
+        
+    // Add context menu actions
+    setup_context_menu_actions(app);
+
     // Load home directory
     const char *home = g_get_home_dir();
     GFile *home_file = g_file_new_for_path(home);

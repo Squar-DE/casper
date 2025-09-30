@@ -78,9 +78,14 @@ void load_directory(FileManager *casper, GFile *directory) {
     g_list_free_full(file_list, g_free);
 }
 
-// Refresh current directory
-void refresh_current_directory(FileManager *casper) {
-    if (casper->current_directory) {
-        load_directory(casper, casper->current_directory);
+void refresh_current_directory(FileManager *fm) {
+    // Clear selected file since we're reloading
+    if (fm->selected_file) {
+        g_object_unref(fm->selected_file);
+        fm->selected_file = NULL;
+    }
+    
+    if (fm->current_directory) {
+        load_directory(fm, fm->current_directory);
     }
 }
